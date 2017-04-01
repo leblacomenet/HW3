@@ -11,23 +11,18 @@ temp$date <- lapply(temp$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-0
 gas$date <- lapply(gas$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-01')) })
 google$date <- lapply(google$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-01')) })
 
-gasc <- ts(gas$gas_cons, frequency=12)
+gasc <- ts(gas$gas_cons[1:510], frequency=12)
+gaslc <- ts(gas$log_gas_cons[1:510], frequency=12)
 plot(gasc)
+plot(gaslc)
 
-# This data is highly seasonal, let's remove the seasonality
-gasc_d <- decompose(gasc)
-gasc_adj <- gasc - gasc_d$seasonal
-plot(gasc_adj, type="l")
-plot(gasc_d$seasonal)
+gasc_d <- stl(gasc, t.window=12, s.window="periodic")
+gasc_d_fit <- forecast(gasc_d, h=12)
+plot(gasc_d_fit)
 
-gaslc <- ts(gas$log_gas_cons, frequency=12)
-gaslc_d <- decompose(gaslc)
-gaslc_adj <- gaslc - gaslc_d$seasonal
-plot(gaslc_adj, type="l")
-plot(gaslc_d$seasonal)
+gaslc_d <- stl(gaslc, t.window=12, s.window="periodic")
+gaslc_d_fit <- forecast(gaslc_d, h=12)
+plot(gaslc_d_fit)
 
-gasc_stl <- stl(gasc, s.window="periodic")
-summary(gasc_stl)
-gasc_stl_adj <- gasc - gasc_stl$time.series[,1]
-plot(gasc_stl_adj, type="l")
-acf(gasc_stl_adj)
+# todo compare fits, compute key stats
+
