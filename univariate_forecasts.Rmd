@@ -33,7 +33,38 @@ We would like to evaluate models using a rolling window. Let us look at what R s
 
 ## Time Series Decomposition
 
-TODO SEBASTIEN PENAY
+Let's try to decompose our series in three components: trend, seasonality and error. We assume seasonality is fixed across years and we do our analysis on the log of consumption data to avoid overweighing extreme values. This is a strong assumption that is equivalent to doing a multiplicative decomposition.
+
+```{r}
+decomp = stl(train, s.window="periodic")
+plot(decomp)
+```
+
+The stl decomposition seems to capture well the seasonality "graphically". We'll see how well this translates into forecasts. Our first attempt will just forecast the time series by removing seasonality, and then using the last observation to which we add back the seasonality as the next forecast value.
+
+```{r}
+stlfk_naive = forecast(decomp, method="naive", h=12)
+summary(stlfk_naive)
+accuracy(stlfk_naive, test)
+```
+
+Let's try with exponential smoothing to forecast the seasonally-adjusted series.
+
+```{r}
+stlfk_ets = forecast(decomp, method="ets", h=12)
+summary(stlfk_ets)
+accuracy(stlfk_ets, test)
+```
+
+It actually does worse than the naive technique. As a last attempt, we can also use arima on the seasonally-adjusted data.
+
+```{r}
+stlfk_arima = forecast(decomp, method="arima", h=12)
+summary(stlfk_arima)
+accuracy(stlfk_arima, test)
+```
+
+R picked an ARIMA(3,1,2). The results aren't as good as with the naive approach either. To conclude on this approach, it seems that the best model is to do a naive forecast on the seasonally-adjusted data.
 
 ## Seasonal ARIMA
 
