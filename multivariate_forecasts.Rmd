@@ -16,6 +16,12 @@ library(readr)
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
 temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
 google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+rmse <- function(l, r) {
+  sqrt(sum((l - r)^2)/NROW(l))
+}
+exp_rmse <- function(l, r) {
+  rmse(exp(l), exp(r))
+}
 ```
 
 As said before, our datasets span over different periods of time: while gas consumption, our target value goes from January 1973 to July 2016, temperature data start in January 1895 and end in February 2017. Finally, data from Google Trends go from january 2004 and up to march 2017.
@@ -51,7 +57,7 @@ ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
 ```{r}
 ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
     labs(title = "Number of snow storms occurences in the US",  y = "Count")
-```
+````
 
 ### Preparation
 
@@ -60,6 +66,12 @@ Let us merge the dataframes
 gas_temp = merge(gas, temp, by = "date", all.x = TRUE)
 gas_goo = merge(gas, google, by = "date", all = FALSE)
 all = merge(gas_temp, google, by= "date",  all = FALSE)
+extreme <- all[,c(16,17,18)]
+
+# extreme_heat will be 1 when heatwave > mean(heatwave)
+extreme_heat <- as.numeric(extreme$heatwave > mean(extreme$heatwave))
+# extreme_cold will be 1 when snow_storm > mean(snow_storm) and extreme_weather > mean(extreme_weather)
+extreme_cold <- as.numeric(extreme$snow_storm > mean(extreme$snow_storm) & extreme$extreme_weather > mean(extreme$extreme_weather))
 all = cbind(all, extreme_heat, extreme_cold)
 ```
 
@@ -74,14 +86,32 @@ nrow(all_train)
 Now lets fit and predict with a simple VAR model
 ```{r}
 library(MTS)
-simple_var = VAR(all_train[,c(2,6,14,19,20)])
+simple_var = VAR(all_train[,c('gas_cons','min_temp_val','heat_days_val','extreme_heat','extreme_cold')])
 simple_var_pred = VARpred(simple_var, h = 12)
 accuracy(all_test$gas_cons, simple_var_pred$pred[,1])
-
 ref_simple_var = refVAR(simple_var)
 ref_simple_var_pred = VARpred(ref_simple_var, h = 12)
-accuracy(all_test$log_gas_cons, ref_simple_var_pred$pred[,1])
+accuracy(all_test$gas_cons, ref_simple_var_pred$pred[,1])
 ```
-
 Both the simple_var and the ref_simple_var are very bad predictors. 
 
+```{r}
+var = VAR(all_train[,c('log_gas_cons','min_temp_val','heat_days_val','extreme_heat','extreme_cold')])
+var_pred = VARpred(var, h = 12)
+ref_var_pred = VARpred(refVAR(var), h = 12)
+accuracy(all_test$log_gas_cons, var_pred$pred[,1])
+accuracy(all_test$log_gas_cons, ref_var_pred$pred[,1])
+exp_rmse(all_test$log_gas_cons, var_pred$pred[,1])
+exp_rmse(all_test$log_gas_cons, ref_var_pred$pred[,1])
+```
+Doing it with the logarithm of the gas consumption is even worse.
+
+```{r}
+var = VAR(all_train[,c('gas_cons','min_temp_val','heat_days_val','extreme_heat','extreme_cold')], p=3)
+var_pred = VARpred(var, h = 12)
+accuracy(all_test$gas_cons, var_pred$pred[,1])
+ref_var = refVAR(var)
+ref_var_pred = VARpred(ref_var, h = 12)
+accuracy(all_test$gas_cons, ref_var_pred$pred[,1])
+```
+Comparing several orders, we seem to get the best results with a VAR of order 3. It is impossible to compute VAR of greater orders because there seems to be a conditioning issue, so we can't do the numerical calculation.
