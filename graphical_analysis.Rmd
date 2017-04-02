@@ -6,17 +6,47 @@ output: html_notebook
 Let us perform a graphical analysis of the available data and have a look at its statistcal characteristics.
 
 ### Load data
-We have separated the original excel file into separate .csv files to ease the import. Since temperature and weather data from google trends are monthly values, we decided to set them to the 15th of each month to match with the gas data.
+We have separated the original excel file into separate .csv files to ease the import. Since temperature and weather data from google trends are monthly values, we decided to set them to the 15th of each month to match with the gas data. We omit here the last 12 lines of the gas.csv which correspond to the values to predict.
 
 ```{r}
-gas <- na.omit(read.csv('data/gas.csv'))
-temp <- read.csv('data/temp.csv')
-google <- read.csv('data/google.csv')
+gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+```
 
+Let us have a look at the statistical summary of these datasets.
+
+```{r}
 summary(gas)
-summary(temp)
-summary(google)
+```
 
+```{r}
+summary(temp)
+```
+```{r}
+summary(google)
+```
+We first notice that these datasets span over different periods of time: while gas consumption, our target value goes from January 1973 to July 2016, temperature data start in January 1895 and end in February 2017. Finally, data from Google Trends go from january 2004 and up to march 2017.
+
+### Plots
+
+```{r}
+library(ggplot2)
+#ggplot(gas, aes(x=date, y=gas_cons)) + geom_line() +
+#            labs(title = "Gas Consumption in the US",  y = "Gas Consumption")
+ggplot(gas, aes(x=date, y=log_gas_cons)) + geom_line() +
+            labs(title = "Gas Consumption in the US",  y = "Logarithm of the Gas Consumption")
+```
+
+
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
+    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
+    labs(title = "Number of heatwaves and extreme weather occurences in the US",  y = "Count")
+```
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
+    labs(title = "Number of snow storms occurences in the US",  y = "Count")
 ```
 
 
