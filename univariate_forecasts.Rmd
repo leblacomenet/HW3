@@ -5,6 +5,8 @@ output: html_notebook
 
 In this part we evaluate univariate forecasts of the gas consumption.
 
+## Graphical Analysis
+
 ### Load the data
 ```{r}
 library(readr)
@@ -17,6 +19,14 @@ exp_rmse <- function(l, r) {
 }
 ```
 
+### Stationarity and integration of the consumption
+```{r}
+tsdisplay(gas$gas_cons,main="Gas Consumption")
+tsdisplay(diff(gas$gas_cons, 3), main="Third Order Differientiation")
+tsdisplay(diff(gas$gas_cons, 12), main="Twelfth Order Differientiation")
+```
+The results are similar to that of the log of the consumption. Annual differencing seem to yield a somewhat stationary process with no obvious seasonality.
+
 ### Stationarity and integration of the log of the consumption
 ```{r}
 library(forecast)
@@ -26,16 +36,8 @@ tsdisplay(diff(gas$log_gas_cons, 12), main="Twelfth Order Differientiation")
 ```
 Unsurprisingly, we notice a strong seasonality, still observable after seasonal differencing. Exploring further the dynamics of the log consumption with annual differencing yields a time series that looks stationary.
 
-### Stationarity and integration of the consumption
-```{r}
-tsdisplay(gas$gas_cons,main="Gas Consumption")
-tsdisplay(diff(gas$gas_cons, 3), main="Third Order Differientiation")
-tsdisplay(diff(gas$gas_cons, 12), main="Twelfth Order Differientiation")
-```
-The results are similar to that of the log of the consumption. Annual differencing seem to yield a somewhat stationary process with no obvious seasonality.
-
 ### Models evaluation
-Let us convert data to a time series
+Let us convert data into time series and split it into a training set and a one year test set to evaluate our first models.
 ```{r}
 lgas = ts(gas$log_gas_cons, start = c(1973, 1), frequency=12)
 train = window(lgas, start = c(1973, 1), end = c(2015, 6))
@@ -119,13 +121,18 @@ This time an ARIMA(1, 0, 0) is picked. The best performing model is the exponent
 
 ## Seasonal ARIMA
 
+Let us now try a different approach and forecast the log gas consumption with Seasonal ARIMA Models.
+
 ### Auto Arima on the log data
 ```{r}
 autofit = auto.arima(train, seasonal=TRUE)
 print(autofit)
+tsdisplay(residuals(autofit))
 autofk = forecast(autofit,h=12)
 accuracy(autofk,test)
 ```
+The ACF and PACF of the residuals show no significant spikes.
+
 
 Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual differentiation, we try with an  ARIMA(4,0,1)(0,1,2).
 
@@ -133,9 +140,11 @@ Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual 
 ```{r}
 custfit = Arima(train, order=c(4,0,1), seasonal=c(0,1,2))
 print(custfit)
+tsdisplay(residuals(custfit))
 custfk = forecast(custfit,h=12)
 accuracy(custfk,test)
 ```
+Again, we find no alarming spikes in the residuals.
 
 Although the statistical tests and criterion seem better here, the error on train and test sets are higher, so we keep the auto ARIMA.
 
@@ -178,10 +187,10 @@ for (m in 1:12){
 ggplot(errm)+geom_line(aes(x=as.numeric(row.names(errm)), y=RMSE))+scale_x_continuous(breaks=seq(1,12))
 ```
 
-We will thus use a rolling window of 15 full years.
+We will thus use a rolling window of 15 years.
 
 ```{r}
-rollwitme = function(p,d,q,P,D,Q, drift){
+roll = function(p,d,q,P,D,Q, drift){
     RMSE = rep(0,28)
     for (y in 1973:2000){
         tr = window(lgas, start=c(y,7), end=c(y+15,6))
@@ -196,11 +205,11 @@ rollwitme = function(p,d,q,P,D,Q, drift){
 
 ```{r}
 eval = data.frame('run'=seq(1:28))
-eval['arima_v1'] = rollwitme(2,0,0,1,1,1,TRUE)
-eval['arima_v2'] = rollwitme(1,0,0,0,1,1,FALSE)
-eval['arima_v3'] = rollwitme(1,0,0,0,1,1,TRUE)
-eval['arima_v4'] = rollwitme(2,0,0,1,1,1,FALSE)
-eval['arima_v5'] = rollwitme(4,0,0,0,1,1,FALSE)
+eval['arima_v1'] = roll(2,0,0,1,1,1,TRUE)
+eval['arima_v2'] = roll(1,0,0,0,1,1,FALSE)
+eval['arima_v3'] = roll(1,0,0,0,1,1,TRUE)
+eval['arima_v4'] = roll(2,0,0,1,1,1,FALSE)
+eval['arima_v5'] = roll(4,0,0,0,1,1,FALSE)
 ggplot(stack(eval[,names(eval) != "run"]))+geom_boxplot(aes(x=ind, y=values))+
     labs(x='model', title="Model Performances", y="RMSE")
 ```
