@@ -9,6 +9,12 @@ In this part we evaluate univariate forecasts of the gas consumption.
 ```{r}
 library(readr)
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+rmse <- function(l, r) {
+  sqrt(sum((l - r)^2)/NROW(l))
+}
+exp_rmse <- function(l, r) {
+  rmse(exp(l), exp(r))
+}
 ```
 
 ### Stationarity and integration
@@ -27,11 +33,13 @@ Let us convert data to a time series
 lgas = ts(gas$log_gas_cons, start = c(1973, 1), frequency=12)
 train = window(lgas, start = c(1973, 1), end = c(2015, 6))
 test = window(lgas, start = c(2015,7), end = c(2016, 6))
+
+dgas = ts(gas$gas_cons, start = c(1973, 1), frequency=12)
+dtrain = window(dgas, start = c(1973, 1), end = c(2015, 6))
+dtest = window(dgas, start = c(2015, 7), end = c(2016, 6))
 ```
 
-We would like to evaluate models using a rolling window. Let us look at what R suggests:
-
-## Time Series Decomposition
+## Time Series Decomposition with log gas consumption
 
 Let's try to decompose our series in three components: trend, seasonality and error. We assume seasonality is fixed across years and we do our analysis on the log of consumption data to avoid overweighing extreme values. This is a strong assumption that is equivalent to doing a multiplicative decomposition.
 
@@ -65,6 +73,42 @@ accuracy(stlfk_arima, test)
 ```
 
 R picked an ARIMA(3,1,2). The results aren't as good as with the naive approach either. To conclude on this approach, it seems that the best model is to do a naive forecast on the seasonally-adjusted data.
+
+We should note that what we are interested in is the RMSE on the test set for the values of the gas consumption, and not for their log.
+```{r}
+c(exp_rmse(stlfk_naive$mean, test), exp_rmse(stlfk_ets$mean, test), exp_rmse(stlfk_arima$mean, test))
+```
+
+According to this criterion, the model to pick is the ARIMA one.
+
+## Time Series Decomposition with direct gas consumption
+
+The approach is the same as above, but this time we fit the models to the data directly and not to the log of it. It is equivalent to doing an additive decomposition.
+
+```{r}
+ddecomp = stl(dtrain, s.window="periodic")
+plot(ddecomp)
+```
+
+Just as in the previous case, graphically the decomposition seems interesting. The trend seems a bit harder to spot in this one. There seems to be extreme peaks which may be problematic for our forecasts.
+
+Let's fit the naive, exponential smoothing and arima models now.
+
+```{r}
+dstl_naive = forecast(ddecomp, method="naive", h=12)
+dstl_ets = forecast(ddecomp, method="ets", h=12)
+dstl_arima = forecast(ddecomp, method="arima", h=12)
+
+summary(dstl_naive)
+summary(dstl_ets)
+summary(dstl_arima)
+
+accuracy(dstl_naive, dtest)
+accuracy(dstl_arima, dtest)
+accuracy(dstl_ets, dtest)
+```
+
+This time an ARIMA(1, 0, 0) is picked. The best performing model is the exponential smoothing one (ets). This additive approach performs better than the multiplicative approach we outlined in the previous section.
 
 ## Seasonal ARIMA
 
