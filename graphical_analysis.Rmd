@@ -19,7 +19,7 @@ Let us have a look at the statistical summary of these datasets.
 ```{r}
 summary(gas)
 ```
-
+The temperature data is taken from the National Center for Environmental Information.
 ```{r}
 summary(temp)
 ```
@@ -42,9 +42,14 @@ ggplot(gas, aes(x=date, y=log_gas_cons)) + geom_line() +
 
 ## Temperature
 ```{r}
-ggplot(temp)+geom_line(aes(x=date, y=av_temp_val, colour="Temperature"))+
-    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
-    labs(title = "Temperature in the US",  y = "Count")
+temp_trunc = temp[temp$date >= 1973-01-15,]
+ggplot(temp_trunc)+geom_line(aes(x=date, y=av_temp_ano))+
+    labs(title = "Temperature in the US",  y = "Average Temperature Anomaly (°Farenheit)")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=prec_ano))+
+    labs(title = "Precipitations in the US",  y = "Precipitation Anomaly")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=cool_days_ano, colour = "Cooling"))+
+    geom_line(aes(x=date, y=heat_days_ano, colour ="Heating"))+
+    labs(title = "Cooling and Heating Degree Days in the US",  y = "Degree Days Anomaly")
 ```
 
 
@@ -59,3 +64,18 @@ ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
 ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
     labs(title = "Number of snow storms occurences in the US",  y = "Count")
 ```
+
+## Covariance analysis
+
+Let us merge the dataframes
+```{r}
+gas_temp = merge(gas, temp, by = "date", all.x = TRUE)
+gas_goo = merge(gas, google, by = "date", all = FALSE)
+all = merge(gas_temp, google, by= "date",  all = FALSE)
+```
+
+```{r}
+pairs(gas_goo[,-c(1,2)])
+```
+
+
