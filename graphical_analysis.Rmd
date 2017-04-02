@@ -9,6 +9,7 @@ Let us perform a graphical analysis of the available data and have a look at its
 We have separated the original excel file into separate .csv files to ease the import. Since temperature and weather data from google trends are monthly values, we decided to set them to the 15th of each month to match with the gas data. We omit here the last 12 lines of the gas.csv which correspond to the values to predict.
 
 ```{r}
+library(readr)
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
 temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
 google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))

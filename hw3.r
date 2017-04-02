@@ -3,6 +3,8 @@
 
 # Environment
 library(forecast)
+library(fpp)
+library(readr)
 
 # Data
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
@@ -19,6 +21,8 @@ gaslc <- ts(gas$log_gas_cons[1:510], frequency=12)
 plot(gasc)
 plot(gaslc)
 
+tsdisplay(gas$gas_cons,main="")
+
 # Forecast after seasonal decomposition
 
 # Consumption
@@ -32,4 +36,3 @@ gaslc_d_fit <- forecast(gaslc_d, h=12)
 plot(gaslc_d_fit)
 
 # todo compare fits, compute key stats
-
