@@ -1,0 +1,253 @@
+---
+title: "Temperature Selection"
+output: html_notebook
+---
+
+Here, we will compare the different metrics available for temperature and select the most efficient one (or most efficient combinaison) for predicting gas consumption.
+
+### Load data
+We have separated the original excel file into separate .csv files to ease the import. Since temperature and weather data from google trends are monthly values, we decided to set them to the 15th of each month to match with the gas data. We omit here the last 12 lines of the gas.csv which correspond to the values to predict.
+
+```{r}
+library(readr)
+gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+```
+
+The temperature data is taken from the National Center for Environmental Information.
+```{r}
+summary(temp)
+```
+```{r}
+summary(google)
+```
+We first notice that these datasets span over different periods of time: while gas consumption, our target value goes from January 1973 to July 2016, temperature data start in January 1895 and end in February 2017. Finally, data from Google Trends go from january 2004 and up to march 2017.
+
+### Plots
+
+## Temperature
+```{r}
+library(ggplot2)
+temp_trunc = temp[temp$date >= 1973-01-15,]
+ggplot(temp_trunc)+geom_line(aes(x=date, y=av_temp_ano))+
+    labs(title = "Temperature in the US",  y = "Average Temperature Anomaly (°Farenheit)")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=prec_ano))+
+    labs(title = "Precipitations in the US",  y = "Precipitation Anomaly")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=cool_days_ano, colour = "Cooling"))+
+    geom_line(aes(x=date, y=heat_days_ano, colour ="Heating"))+
+    labs(title = "Cooling and Heating Degree Days in the US",  y = "Degree Days Anomaly")
+```
+
+
+## Google trends
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
+    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
+    labs(title = "Number of heatwaves and extreme weather occurences in the US",  y = "Count")
+```
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
+    labs(title = "Number of snow storms occurences in the US",  y = "Count")
+```
+
+### Covariance analysis
+
+Let us merge the dataframes
+```{r}
+gas_temp = merge(gas, temp, by = "date", all.x = TRUE)
+gas_goo = merge(gas, google, by = "date", all = FALSE)
+all = merge(gas_temp, google, by= "date",  all = FALSE)
+```
+
+The covariances show us that: 
+- the av_temp_val, the min_temp_val, the max_temp_val, cool_days_val are highly negatively correlated with the log gas consumption 
+- the heat_days_val is highly positively correlated with the log gas consumption
+This is logical since it is when the temperature drops and that heating is necessary that the gas consumption is expected to rise. 
+We also note that min_temp_val (resp. heat_days_val) is the most negatively (resp. positively) correlated variable with log gas consumption.  
+
+```{r}
+cor(all[,c(3)],all[,-c(1,2,3)])
+```
+
+As seen in the following pairs plot, we kind of what to use the log of the cool_days_val. Let's try ! 
+
+```{r}
+corr <- all[,c(3,4,6,8,12,14)]
+pairs(corr)
+```
+An interesting result here is that there appears to be four "steps" in the log_gas_cons and av_temp_val and min_temp_val scatter plots. There are perhaps four "steps" in the gas consumption behaviour according to the value of the temperatue ? This could be interesting to study in a further study. 
+
+```{r}
+cor(all[,c(3)],log(all$cool_days_val))
+```
+Which is better ! 
+The best variables to use are thus : 
+- the av_temp_val, 
+- the min_temp_val, 
+- the max_temp_val, 
+- the log(cool_days_val),
+- the heat_days_val 
+
+```{r}
+top_corr <- cbind(all[,c(3,4,6,8,14)], log(all$cool_days_val))
+colnames(top_corr) <- c(colnames(all[,c(3,4,6,8,14)]), "cool_days_val")
+pairs(top_corr)
+```
+
+
+### Granger causality tests
+
+Whilst the correlations give us an indication of the variables that best explain the log gas consumption, we have to make sure that there is a causality link between the temperature and the log gas consumption. 
+
+Here, we will test the most important variables in terms of correlation positively and negatively to avoid redundance : heat_days_val and av_temp_val As seen with the unit root tests bellow, we need to do a first seasonal difference. 
+
+```{r}
+library(forecast)
+# test for unit root and number of differences required
+ndiffs(all$min_temp_val, alpha=0.05, test=c("kpss"))  
+ndiffs(all$heat_days_val, alpha=0.05, test=c("kpss"))  
+ndiffs(all$log_gas_cons, alpha=0.05, test=c("kpss"))  
+# test for unit roots in seasonality
+nsdiffs(all$min_temp_val, m=12, test=c("ocsb"))  
+nsdiffs(all$heat_days_val, m=12, test=c("ocsb"))  
+nsdiffs(all$log_gas_cons, m=12, test=c("ocsb")) 
+# test for unit roots in the first seasonal difference
+nsdiffs(diff(all$min_temp_val, lag = 12), m=12, test=c("ocsb")) 
+nsdiffs(diff(all$heat_days_val, lag = 12), m=12, test=c("ocsb")) 
+nsdiffs(diff(all$log_gas_cons, lag = 12), m=12, test=c("ocsb")) 
+```
+
+As we can see, the first seasonal difference removes the unit root : it is thus the time series we will consider. 
+
+```{r}
+# differenced time series
+ds_min_temp_val <- diff(all$min_temp_val, lag = 12)
+ds_heat_days_val <- diff(all$heat_days_val, lag = 12)
+ds_log_gas_cons <- diff(all$log_gas_cons, lag = 12)
+
+plot.ts(ds_min_temp_val, main = "Diff seasonal min_temp_val")
+plot.ts(ds_heat_days_val, main = "Diff seasonal heat_days_val")
+plot.ts(ds_log_gas_cons, main = "Diff seasonal log_gas_cons")
+```
+
+The following Granger causality tests show that :
+- the ds_min_temp_val Granger-cause ds_log_gas_cons at order = 1, 2, 3, 4, 7, 8, 9, 10, 11 : thus all the time exception in summer ! 
+- the ds_heat_days_val Granger-cause ds_log_gas_cons at order = 7 and 11 
+
+```{r}
+library(lmtest)
+# performing the granger causality test
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 1)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 2)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 3)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 4)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 7)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 8)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 9)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 10)
+grangertest(ds_log_gas_cons ~ ds_min_temp_val, order = 11)
+
+grangertest(ds_log_gas_cons ~ ds_heat_days_val, order = 7)
+grangertest(ds_log_gas_cons ~ ds_heat_days_val, order = 11)
+```
+
+Strangely, we also note that the test shows that : 
+- the ds_log_gas_cons Granger-cause ds_cool_days_val at order = 2, 3, 4, 5, 7, 8, 9, 10 and 11
+- the ds_log_gas_cons Granger-cause ds_heat_days_val at order = 11 
+
+```{r}
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 2)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 3)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 4)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 5)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 7)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 8)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 9)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 10)
+grangertest(ds_min_temp_val ~ ds_log_gas_cons, order = 11)
+
+grangertest(ds_heat_days_val ~ ds_log_gas_cons, order = 11)
+```
+
+We will thus only consider ds_min_temp_val and ds_heat_days_val. 
+However, it could be interesting to include in our models dummy variables that model extreme weather cases... We could also try to compute a form of "felt air temperature" with the precipitations, but we do not have time to do so in this study. 
+
+### Creating dummy variables for extreme cases
+
+The extreme weather cases are represented by the following variables: 
+- min_temp_val
+- min_temp_ano
+- max_temp_val
+- max_temp_ano
+- heatwave
+- extreme_weather
+- snow_storm
+Here, we will only consider : heatwave, extreme_weather, snow_storm, because the other variables should either be used to compute the trend or are already used (such as min_temp_val). 
+
+To create a unique "extreme weather" variable, we will do two dummy variables : extreme_heat and extreme_cold. 
+
+```{r}
+extreme <- all[,c(16,17,18)]
+
+# extreme_heat will be 1 when heatwave > mean(heatwave)
+extreme_heat <- as.numeric(extreme$heatwave > mean(extreme$heatwave))
+# extreme_cold will be 1 when snow_storm > mean(snow_storm) and extreme_weather > mean(extreme_weather)
+extreme_cold <- as.numeric(extreme$snow_storm > mean(extreme$snow_storm) & extreme$extreme_weather > mean(extreme$extreme_weather))
+```
+
+### How about doing a PCA and Granger causality tests ? 
+
+We will now try doing a PCA on all our temperature datasets, except the variables used for the dummies. 
+
+```{r}
+temp <- all[,-c(1,2,3, 16, 17, 18)]
+# Apply PCA with scaling = TRUE is highly 
+temp.pca <- prcomp(temp,
+                 center = TRUE,
+                 scale. = TRUE) 
+# print method
+print(temp.pca)
+plot(temp.pca, type = "l")
+# summary method
+summary(temp.pca)
+```
+
+As we can see, we have a drop in the variance explained starting PCA 5 (all equal to 0 after PCA 10, that's why they are not in the graph). 
+Let's look at the correlations with the log gas consumption : 
+
+```{r}
+cor(all[,c(3)],temp.pca$x)
+```
+
+The correlation of the log gas consumption and the PC1 is almost as good as the one between min_temp_val and the log gas consumption. It could be interesting to test the different results on the predictions (with min_temp_val and with PC1). 
+
+```{r}
+test <- cbind(all[,c(3)],temp.pca$x[,c(1,2,3,4,5)])
+colnames(test) <- c('LogGasConso', colnames(temp.pca$x[,c(1,2,3,4,5)]))
+pairs(test)
+```
+
+Granger-causality test between PC1 and log gas consumption is thus :
+
+```{r}
+# test for unit root and number of differences required
+ndiffs(temp.pca$x[,1], alpha=0.05, test=c("kpss"))  
+# test for unit roots in seasonality
+nsdiffs(temp.pca$x[,1], m=12, test=c("ocsb"))  
+# test for unit roots in the first seasonal difference
+nsdiffs(diff(temp.pca$x[,1], lag = 12), m=12, test=c("ocsb")) 
+
+# Doing the difference
+ds_pca <- diff(temp.pca$x[,1], lag = 12)
+
+# Plots
+plot.ts(ds_pca, main = "Diff seasonal PC1")
+plot.ts(ds_log_gas_cons, main = "Diff seasonal log_gas_cons")
+```
+
+The problem is that the PC1 never Granger-causes the log gas consumption ! So, unfortunately, we will not be using it in our forecasts. 
+
+```{r}
+grangertest(ds_log_gas_cons ~ ds_pca, order = 11)
+```
