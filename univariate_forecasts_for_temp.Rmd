@@ -1,16 +1,17 @@
 ---
-title: "Univariate Forecasts"
+title: "Univariate Forecasts for Temperatures"
 output: html_notebook
 ---
 
-In this part we evaluate univariate forecasts of the gas consumption.
-
-## Graphical Analysis
+In this part we evaluate univariate forecasts of the temperatures, needed for the multiple linear regression. 
+We will thus need to use the predicted values : 
+- of min_temp_val and heat_days_val from February 2017 to July 2017
+- of extreme_heat and extreme_cold from March 2017 to July 2017. 
 
 ### Load the data
 ```{r}
 library(readr)
-gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- na.omit(read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
 rmse <- function(l, r) {
   sqrt(sum((l - r)^2)/NROW(l))
 }
@@ -19,45 +20,33 @@ exp_rmse <- function(l, r) {
 }
 ```
 
-### Stationarity and integration of the consumption
-```{r}
-tsdisplay(gas$gas_cons,main="Gas Consumption")
-tsdisplay(diff(gas$gas_cons, 3), main="Third Order Differientiation")
-tsdisplay(diff(gas$gas_cons, 12), main="Twelfth Order Differientiation")
-```
-The results are similar to that of the log of the consumption. Annual differencing seem to yield a somewhat stationary process with no obvious seasonality.
+## min_temp_val
 
-### Stationarity and integration of the log of the consumption
+### Stationarity and integration of the min_temp_val
 ```{r}
 library(forecast)
-tsdisplay(gas$log_gas_cons,main="Log transform of Gas Consumption")
-tsdisplay(diff(gas$log_gas_cons, 3), main="Third Order Differientiation")
-tsdisplay(diff(gas$log_gas_cons, 12), main="Twelfth Order Differientiation")
+tsdisplay(temp$min_temp_val,main="min_temp_val")
+tsdisplay(diff(temp$min_temp_val, 3), main="Third Order Differientiation")
+tsdisplay(diff(temp$min_temp_val, 12), main="Twelfth Order Differientiation")
 ```
-Unsurprisingly, we notice a strong seasonality, still observable after seasonal differencing. Exploring further the dynamics of the log consumption with annual differencing yields a time series that looks stationary.
+COMMENTS TO DO. 
 
 ### Models evaluation
-Let us convert data into time series and split it into a training set and a one year test set to evaluate our first models.
+Let us convert data to a time series
 ```{r}
-lgas = ts(gas$log_gas_cons, start = c(1973, 1), frequency=12)
-train = window(lgas, start = c(1973, 1), end = c(2015, 6))
-test = window(lgas, start = c(2015,7), end = c(2016, 6))
-
-dgas = ts(gas$gas_cons, start = c(1973, 1), frequency=12)
-dtrain = window(dgas, start = c(1973, 1), end = c(2015, 6))
-dtest = window(dgas, start = c(2015, 7), end = c(2016, 6))
+smin_temp_val = ts(temp$min_temp_val, start = c(1973, 1), frequency=12)
+train = window(smin_temp_val, start = c(1973, 1), end = c(2015, 6))
+test = window(smin_temp_val, start = c(2015,7), end = c(2016, 6))
 ```
 
-## Time Series Decomposition with log gas consumption
-
-Let's try to decompose our series in three components: trend, seasonality and error. We assume seasonality is fixed across years and we do our analysis on the log of consumption data to avoid overweighing extreme values. This is a strong assumption that is equivalent to doing a multiplicative decomposition.
+## Time Series Decomposition with min_temp_val
 
 ```{r}
 decomp = stl(train, s.window="periodic")
 plot(decomp)
 ```
 
-The stl decomposition seems to capture well the seasonality "graphically". We'll see how well this translates into forecasts. Our first attempt will just forecast the time series by removing seasonality, and then using the last observation to which we add back the seasonality as the next forecast value.
+Our first attempt will just forecast the time series by removing seasonality, and then using the last observation to which we add back the seasonality as the next forecast value.
 
 ```{r}
 stlfk_naive = forecast(decomp, method="naive", h=12)
@@ -73,7 +62,7 @@ summary(stlfk_ets)
 accuracy(stlfk_ets, test)
 ```
 
-It actually does worse than the naive technique. As a last attempt, we can also use arima on the seasonally-adjusted data.
+As a last attempt, we can also use arima on the seasonally-adjusted data.
 
 ```{r}
 stlfk_arima = forecast(decomp, method="arima", h=12)
@@ -81,7 +70,7 @@ summary(stlfk_arima)
 accuracy(stlfk_arima, test)
 ```
 
-R picked an ARIMA(3,1,2). The results aren't as good as with the naive approach either. To conclude on this approach, it seems that the best model is to do a naive forecast on the seasonally-adjusted data.
+R picked an ARIMA(1,0,1). The results aren't as good as with the naive approach either. To conclude on this approach, it seems that the best model is to do a naive forecast on the seasonally-adjusted data.
 
 We should note that what we are interested in is the RMSE on the test set for the values of the gas consumption, and not for their log.
 ```{r}
@@ -121,18 +110,13 @@ This time an ARIMA(1, 0, 0) is picked. The best performing model is the exponent
 
 ## Seasonal ARIMA
 
-Let us now try a different approach and forecast the log gas consumption with Seasonal ARIMA Models.
-
 ### Auto Arima on the log data
 ```{r}
 autofit = auto.arima(train, seasonal=TRUE)
 print(autofit)
-tsdisplay(residuals(autofit))
 autofk = forecast(autofit,h=12)
 accuracy(autofk,test)
 ```
-The ACF and PACF of the residuals show no significant spikes.
-
 
 Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual differentiation, we try with an  ARIMA(4,0,1)(0,1,2).
 
@@ -140,11 +124,9 @@ Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual 
 ```{r}
 custfit = Arima(train, order=c(4,0,1), seasonal=c(0,1,2))
 print(custfit)
-tsdisplay(residuals(custfit))
 custfk = forecast(custfit,h=12)
 accuracy(custfk,test)
 ```
-Again, we find no alarming spikes in the residuals.
 
 Although the statistical tests and criterion seem better here, the error on train and test sets are higher, so we keep the auto ARIMA.
 
@@ -187,10 +169,10 @@ for (m in 1:12){
 ggplot(errm)+geom_line(aes(x=as.numeric(row.names(errm)), y=RMSE))+scale_x_continuous(breaks=seq(1,12))
 ```
 
-We will thus use a rolling window of 15 years.
+We will thus use a rolling window of 15 full years.
 
 ```{r}
-roll = function(p,d,q,P,D,Q, drift){
+rollwitme = function(p,d,q,P,D,Q, drift){
     RMSE = rep(0,28)
     for (y in 1973:2000){
         tr = window(lgas, start=c(y,7), end=c(y+15,6))
@@ -205,11 +187,11 @@ roll = function(p,d,q,P,D,Q, drift){
 
 ```{r}
 eval = data.frame('run'=seq(1:28))
-eval['arima_v1'] = roll(2,0,0,1,1,1,TRUE)
-eval['arima_v2'] = roll(1,0,0,0,1,1,FALSE)
-eval['arima_v3'] = roll(1,0,0,0,1,1,TRUE)
-eval['arima_v4'] = roll(2,0,0,1,1,1,FALSE)
-eval['arima_v5'] = roll(4,0,0,0,1,1,FALSE)
+eval['arima_v1'] = rollwitme(2,0,0,1,1,1,TRUE)
+eval['arima_v2'] = rollwitme(1,0,0,0,1,1,FALSE)
+eval['arima_v3'] = rollwitme(1,0,0,0,1,1,TRUE)
+eval['arima_v4'] = rollwitme(2,0,0,1,1,1,FALSE)
+eval['arima_v5'] = rollwitme(4,0,0,0,1,1,FALSE)
 ggplot(stack(eval[,names(eval) != "run"]))+geom_boxplot(aes(x=ind, y=values))+
     labs(x='model', title="Model Performances", y="RMSE")
 ```
