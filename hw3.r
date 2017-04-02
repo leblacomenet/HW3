@@ -5,14 +5,13 @@
 library(forecast)
 
 # Data
-gas <- na.omit(read.csv('data/gas.csv'))
-temp <- read.csv('data/temp.csv')
-google <- read.csv('data/google.csv')
+gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
 
-# Pre-process dates
-temp$date <- lapply(temp$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-01')) })
-gas$date <- lapply(gas$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-01')) })
-google$date <- lapply(google$date, function(x) { as.Date(format(as.Date(x), '%Y-%m-01')) })
+summary(gas)
+summary(temp)
+summary(google)
 
 # Create and plot Time-Series Objects
 gasc <- ts(gas$gas_cons[1:510], frequency=12)

@@ -1,0 +1,22 @@
+---
+title: "Graphical Analysis"
+output: html_notebook
+---
+
+Let us perform a graphical analysis of the available data and have a look at its statistcal characteristics.
+
+### Load data
+We have separated the original excel file into separate .csv files to ease the import. Since temperature and weather data from google trends are monthly values, we decided to set them to the 15th of each month to match with the gas data.
+
+```{r}
+gas <- na.omit(read.csv('data/gas.csv'))
+temp <- read.csv('data/temp.csv')
+google <- read.csv('data/google.csv')
+
+summary(gas)
+summary(temp)
+summary(google)
+
+```
+
+
