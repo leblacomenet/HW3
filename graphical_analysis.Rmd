@@ -30,6 +30,8 @@ We first notice that these datasets span over different periods of time: while g
 
 ### Plots
 
+## Gas consumption
+
 ```{r}
 library(ggplot2)
 #ggplot(gas, aes(x=date, y=gas_cons)) + geom_line() +
@@ -38,6 +40,15 @@ ggplot(gas, aes(x=date, y=log_gas_cons)) + geom_line() +
             labs(title = "Gas Consumption in the US",  y = "Logarithm of the Gas Consumption")
 ```
 
+## Temperature
+```{r}
+ggplot(temp)+geom_line(aes(x=date, y=av_temp_val, colour="Temperature"))+
+    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
+    labs(title = "Temperature in the US",  y = "Count")
+```
+
+
+## Google trends
 
 ```{r}
 ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
@@ -48,5 +59,3 @@ ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
 ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
     labs(title = "Number of snow storms occurences in the US",  y = "Count")
 ```
-
-

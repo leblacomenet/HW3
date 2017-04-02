@@ -1,4 +1,4 @@
-"date","av_temp_val","av_temp_ano","min_temp_val","min_temp_ano","max_temp_val","max_temp_ano","prec_temp_val","prec_temp_ano","cool_temp_val","cool_temp_ano","heat_temp_val","heat_temp_ano"
+"date","av_temp_val","av_temp_ano","min_temp_val","min_temp_ano","max_temp_val","max_temp_ano","prec_val","prec_ano","cool_days_val","cool_days_ano","heat_days_val","heat_days_ano"
 1895-01-15,26.69,-3.43,16.52,-3.23,36.86,-3.63,3.32,1.01,6,-2,1017,92
 1895-02-15,26.6,-7.22,15.57,-7.25,37.65,-7.17,1.41,-0.72,1,-6,974,209
 1895-03-15,39.97,-1.53,27.86,-2.13,52.07,-0.94,1.99,-0.52,13,-3,692,65
