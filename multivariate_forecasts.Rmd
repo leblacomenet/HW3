@@ -1,0 +1,87 @@
+---
+title: "Multivariate Forecasts"
+output: html_notebook
+---
+
+Here, we will use the MTS package to compute forecasts of the log gas consumption, basing ourselves on : 
+- the precedent values of the log gas consumption 
+- the selected temperature metrics, that is to say min_temp_val and heat_days_val
+- the computed dummy variables extreme_heat and extreme_cold 
+
+### Load data
+As usual, we load the datasets. 
+
+```{r}
+library(readr)
+gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
+```
+
+As said before, our datasets span over different periods of time: while gas consumption, our target value goes from January 1973 to July 2016, temperature data start in January 1895 and end in February 2017. Finally, data from Google Trends go from january 2004 and up to march 2017.
+
+We will thus need to use the predicted values : 
+- of min_temp_val and heat_days_val from February 2017 to July 2017
+- of extreme_heat and extreme_cold from March 2017 to July 2017. 
+
+In both cases, we will compare the performances with the actual temperature data and the predicted temperatures. 
+
+### Plots
+
+## Temperature
+```{r}
+library(ggplot2)
+temp_trunc = temp[temp$date >= 1973-01-15,]
+ggplot(temp_trunc)+geom_line(aes(x=date, y=av_temp_ano))+
+    labs(title = "Temperature in the US",  y = "Average Temperature Anomaly (°Farenheit)")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=prec_ano))+
+    labs(title = "Precipitations in the US",  y = "Precipitation Anomaly")
+ggplot(temp_trunc)+geom_line(aes(x=date, y=cool_days_ano, colour = "Cooling"))+
+    geom_line(aes(x=date, y=heat_days_ano, colour ="Heating"))+
+    labs(title = "Cooling and Heating Degree Days in the US",  y = "Degree Days Anomaly")
+```
+
+
+## Google trends
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
+    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
+    labs(title = "Number of heatwaves and extreme weather occurences in the US",  y = "Count")
+```
+```{r}
+ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
+    labs(title = "Number of snow storms occurences in the US",  y = "Count")
+```
+
+### Preparation
+
+Let us merge the dataframes
+```{r}
+gas_temp = merge(gas, temp, by = "date", all.x = TRUE)
+gas_goo = merge(gas, google, by = "date", all = FALSE)
+all = merge(gas_temp, google, by= "date",  all = FALSE)
+all = cbind(all, extreme_heat, extreme_cold)
+```
+
+Let us create the test and train set
+```{r}
+all_test = all[all$date >= '2015-06-15' & all$date < '2016-06-15',]
+all_train = all[all$date < '2015-06-15',]
+nrow(all_train)
+```
+
+###  VAR on the known dataset 
+Now lets fit and predict with a simple VAR model
+```{r}
+library(MTS)
+simple_var = VAR(all_train[,c(2,6,14,19,20)])
+simple_var_pred = VARpred(simple_var, h = 12)
+accuracy(all_test$gas_cons, simple_var_pred$pred[,1])
+
+ref_simple_var = refVAR(simple_var)
+ref_simple_var_pred = VARpred(ref_simple_var, h = 12)
+accuracy(all_test$log_gas_cons, ref_simple_var_pred$pred[,1])
+```
+
+Both the simple_var and the ref_simple_var are very bad predictors. 
+

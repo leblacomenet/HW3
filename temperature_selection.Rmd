@@ -1,6 +1,8 @@
 ---
 title: "Temperature Selection"
-output: html_notebook
+output:
+  html_document: default
+  html_notebook: default
 ---
 
 Here, we will compare the different metrics available for temperature and select the most efficient one (or most efficient combinaison) for predicting gas consumption.
