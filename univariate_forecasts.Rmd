@@ -211,35 +211,44 @@ We will thus use a rolling window of 15 years, and define the R function below:
 ```{r}
 roll = function(p,d,q,P,D,Q, drift){
     RMSE = rep(0,28)
+    RMSLE = rep(0,28) 
     for (y in 1973:2000){
         tr = window(lgas, start=c(y,7), end=c(y+15,6))
         te = window(lgas, start=c(y+15,7), end=c(y+16,6))
         model = Arima(tr, order=c(p,d,q), seasonal=c(P,D,Q), include.drift = drift)
-        RMSE[y+1-1973] = accuracy(forecast(model, h=12),te)[2,"RMSE"] 
+        RMSLE[y+1-1973] = accuracy(forecast(model, h=12),te)[2,"RMSE"]
+        RMSE[y+1-1973] = exp_rmse(forecast(model, h=12)$mean, te)
     }
-    return(RMSE)
+    return(rbind(RMSE, RMSLE))
 }
 ```
 
 We can now, evaluate models predictions on different years. We try below different seasonal arima, reducing the number of lags little by little.
 ```{r}
 eval = data.frame('run'=seq(1:28))
-eval['arima_v1'] = roll(2,0,0,1,1,1,TRUE)
-eval['arima_v2'] = roll(4,0,0,0,1,1,FALSE)
-eval['arima_v3'] = roll(2,0,0,1,1,1,FALSE)
-eval['arima_v4'] = roll(1,0,0,0,1,1,TRUE)
-eval['arima_v5'] = roll(1,0,0,0,1,1,FALSE)
-ggplot(stack(eval[,names(eval) != "run"]))+geom_boxplot(aes(x=ind, y=values))+
-    labs(x='model', title="Model Performances", y="RMSE")
+eval[c('arima_v1_dir', 'arima_v1_log')] = t(roll(2,0,0,1,1,1,TRUE))
+eval[c('arima_v2_dir', 'arima_v2_log')] = t(roll(4,0,0,0,1,1,FALSE))
+eval[c('arima_v3_dir', 'arima_v3_log')] = t(roll(2,0,0,1,1,1,FALSE))
+eval[c('arima_v4_dir', 'arima_v4_log')] = t(roll(1,0,0,0,1,1,TRUE))
+eval[c('arima_v5_dir', 'arima_v5_log')] = t(roll(1,0,0,0,1,1,FALSE))
+ggplot(stack(eval[,(names(eval) != "run")&grepl('log',names(eval))]))+geom_boxplot(aes(x=ind, y=values))+
+    labs(x='model', title="Log Model Performances", y="RMSE")
+ggplot(stack(eval[,(names(eval) != "run")&grepl('dir',names(eval))]))+geom_boxplot(aes(x=ind, y=values))+
+    labs(x='model', title="Direct Model Performances", y="RMSE")
 ```
 
-All model have outliers. We keep the model v2, i.e. SARIMA((4,0,0),(0,1,1),12). We compute the RMSE on the exponential of the predictions of the last year to compare with direct predictions obtained earlier on:
+All model have outliers. We keep the model v2, i.e. SARIMA((4,0,0),(0,1,1),12). 
+
+
 
 ```{r}
-finalModel = Arima(train, order=c(4,0,0), seasonal=c(0,1,1), include.drift = FALSE)
+finalModel = Arima(window(lgas, start=c(2001,7)), order=c(4,0,0), seasonal=c(0,1,1), include.drift = FALSE)
 finalFkst = forecast(finalModel, 12)
-accuracy(finalFkst, test)[2,"RMSE"]
-exp_rmse(finalFkst$mean, test)
+plot(finalFkst)
+```
+In the end we have the following predictions:
+```{r}
+finalFkst$mean
+write.csv(finalFkst$mean, "univariate_predictions.csv")
 ```
 
-The seasonal ARIMA on the log consumption is outperformed by the times series decomposition approach.
