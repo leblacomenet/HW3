@@ -5,21 +5,27 @@ output: html_notebook
 
 In this part we evaluate univariate forecasts of the gas consumption.
 
-## Graphical Analysis
+## Graphical Analysis and stationarity
 
-### Load the data
+---
+
+### Load useful packages & data
 ```{r}
 library(readr)
+library(forecast)
+library(ggplot2)
+library(knitr)
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
-rmse <- function(l, r) {
-  sqrt(sum((l - r)^2)/NROW(l))
-}
-exp_rmse <- function(l, r) {
-  rmse(exp(l), exp(r))
-}
+```
+We also define functions for the RMS error which we will use as the main evaluation metric here.
+```{r}
+rmse <- function(l, r) {sqrt(sum((l - r)^2)/NROW(l))}
+exp_rmse <- function(l, r) {rmse(exp(l), exp(r))}
 ```
 
+
 ### Stationarity and integration of the consumption
+Let us plot the values, ACF and PACF of the data and its logarithm, with seasonal and annual differentiation.
 ```{r}
 tsdisplay(gas$gas_cons,main="Gas Consumption")
 tsdisplay(diff(gas$gas_cons, 3), main="Third Order Differientiation")
@@ -29,14 +35,21 @@ The results are similar to that of the log of the consumption. Annual differenci
 
 ### Stationarity and integration of the log of the consumption
 ```{r}
-library(forecast)
 tsdisplay(gas$log_gas_cons,main="Log transform of Gas Consumption")
 tsdisplay(diff(gas$log_gas_cons, 3), main="Third Order Differientiation")
 tsdisplay(diff(gas$log_gas_cons, 12), main="Twelfth Order Differientiation")
 ```
-Unsurprisingly, we notice a strong seasonality, still observable after seasonal differencing. Exploring further the dynamics of the log consumption with annual differencing yields a time series that looks stationary.
+Unsurprisingly, the results are globally similar: we notice a strong seasonality, still observable after seasonal differencing. Exploring further the dynamics of the log consumption with annual differencing yields a time series that looks stationary.
 
-### Models evaluation
+Let us perform statistical tests on the log gas consumption for stationarity with differencing and seasonal differencing:
+
+```{r}
+ndiffs(gas$log_gas_cons, alpha=0.05, test=c("kpss","adf", "pp"), max.d=2)
+nsdiffs(gas$log_gas_cons, m=12, test=c("ocsb","ch"), max.D=1)
+```
+The unit root test with level 0.05 indicates there is no need for differencing to obtain a stationary time series, but here the strong seasonality makes it irrelevant. We thus look at seasonal differencing which shows there is a need for first order seasonal differencing for the series to become stationary.
+
+### Pre-processing
 Let us convert data into time series and split it into a training set and a one year test set to evaluate our first models.
 ```{r}
 lgas = ts(gas$log_gas_cons, start = c(1973, 1), frequency=12)
@@ -49,6 +62,8 @@ dtest = window(dgas, start = c(2015, 7), end = c(2016, 6))
 ```
 
 ## Time Series Decomposition with log gas consumption
+
+---
 
 Let's try to decompose our series in three components: trend, seasonality and error. We assume seasonality is fixed across years and we do our analysis on the log of consumption data to avoid overweighing extreme values. This is a strong assumption that is equivalent to doing a multiplicative decomposition.
 
@@ -85,12 +100,16 @@ R picked an ARIMA(3,1,2). The results aren't as good as with the naive approach 
 
 We should note that what we are interested in is the RMSE on the test set for the values of the gas consumption, and not for their log.
 ```{r}
-c(exp_rmse(stlfk_naive$mean, test), exp_rmse(stlfk_ets$mean, test), exp_rmse(stlfk_arima$mean, test))
+kable(data.frame("naive"=exp_rmse(stlfk_naive$mean, test), 
+           "ets"=exp_rmse(stlfk_ets$mean, test), 
+           "arima"=exp_rmse(stlfk_arima$mean, test), row.names = "RMSE"), align='c')
 ```
 
 According to this criterion, the model to pick is the ARIMA one.
 
 ## Time Series Decomposition with direct gas consumption
+
+---
 
 The approach is the same as above, but this time we fit the models to the data directly and not to the log of it. It is equivalent to doing an additive decomposition.
 
@@ -121,6 +140,8 @@ This time an ARIMA(1, 0, 0) is picked. The best performing model is the exponent
 
 ## Seasonal ARIMA
 
+---
+
 Let us now try a different approach and forecast the log gas consumption with Seasonal ARIMA Models.
 
 ### Auto Arima on the log data
@@ -138,15 +159,13 @@ Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual 
 
 ### Custom Seasonal Arima on the log data
 ```{r}
-custfit = Arima(train, order=c(4,0,1), seasonal=c(0,1,2))
+custfit = Arima(train, order=c(4,0,1), seasonal=c(0,1,1))
 print(custfit)
 tsdisplay(residuals(custfit))
 custfk = forecast(custfit,h=12)
 accuracy(custfk,test)
 ```
-Again, we find no alarming spikes in the residuals.
-
-Although the statistical tests and criterion seem better here, the error on train and test sets are higher, so we keep the auto ARIMA.
+Again, we find no alarming spikes in the residuals. But this model is outperformed by the the one found automatically.
 
 ### Seasonal Arima on the actual data
 ```{r}
@@ -158,14 +177,14 @@ accuracy(dautofk,dtest)
 
 This time the RMSE is quite high. Comparing with the results on the log data gives the following RMSE:
 ```{r}
-c(accuracy(dautofk,dtest)[2, "RMSE"], exp_rmse(autofk$mean, test))
+kable(data.frame("Direct"=accuracy(dautofk,dtest)[2, "RMSE"], 
+           "Logarithm"=exp_rmse(autofk$mean, test), row.names="RMSE"), align='c')
 ```
 The seasonal ARIMA is not doing any good on the actual data, compared to the log data.
 
 ### Rolling Window Evaluation
-To try more model, we would like to setup a rolling window. Let us find the optimal size of that window using the Auto ARIMA we just fitted.
+To compare models more precisely, we would like to setup a rolling window evaluation. Let us find the optimal size of that window using the Auto ARIMA we just fitted, by comparing the performances on RMSE of models with different training test time span.
 ```{r}
-library(ggplot2)
 err = data.frame("RMSE" = rep(0, 2010-1973+1), row.names = seq(1973, 2010))
 for (y in 1973:2010){
     model = Arima(window(train, start=c(y,1)), order=c(2,0,0), seasonal=c(1,1,1), include.drift = TRUE)
@@ -187,7 +206,7 @@ for (m in 1:12){
 ggplot(errm)+geom_line(aes(x=as.numeric(row.names(errm)), y=RMSE))+scale_x_continuous(breaks=seq(1,12))
 ```
 
-We will thus use a rolling window of 15 years.
+We will thus use a rolling window of 15 years, and define the R function below:
 
 ```{r}
 roll = function(p,d,q,P,D,Q, drift){
@@ -202,15 +221,25 @@ roll = function(p,d,q,P,D,Q, drift){
 }
 ```
 
-
+We can now, evaluate models predictions on different years. We try below different seasonal arima, reducing the number of lags little by little.
 ```{r}
 eval = data.frame('run'=seq(1:28))
 eval['arima_v1'] = roll(2,0,0,1,1,1,TRUE)
-eval['arima_v2'] = roll(1,0,0,0,1,1,FALSE)
-eval['arima_v3'] = roll(1,0,0,0,1,1,TRUE)
-eval['arima_v4'] = roll(2,0,0,1,1,1,FALSE)
-eval['arima_v5'] = roll(4,0,0,0,1,1,FALSE)
+eval['arima_v2'] = roll(4,0,0,0,1,1,FALSE)
+eval['arima_v3'] = roll(2,0,0,1,1,1,FALSE)
+eval['arima_v4'] = roll(1,0,0,0,1,1,TRUE)
+eval['arima_v5'] = roll(1,0,0,0,1,1,FALSE)
 ggplot(stack(eval[,names(eval) != "run"]))+geom_boxplot(aes(x=ind, y=values))+
     labs(x='model', title="Model Performances", y="RMSE")
 ```
 
+All model have outliers. We keep the model v2, i.e. SARIMA((4,0,0),(0,1,1),12). We compute the RMSE on the exponential of the predictions of the last year to compare with direct predictions obtained earlier on:
+
+```{r}
+finalModel = Arima(train, order=c(4,0,0), seasonal=c(0,1,1), include.drift = FALSE)
+finalFkst = forecast(finalModel, 12)
+accuracy(finalFkst, test)[2,"RMSE"]
+exp_rmse(finalFkst$mean, test)
+```
+
+The seasonal ARIMA on the log consumption is outperformed by the times series decomposition approach.
