@@ -249,6 +249,7 @@ plot(finalFkst)
 In the end we have the following predictions:
 ```{r}
 finalFkst$mean
-write.csv(finalFkst$mean, "univariate_predictions.csv")
+exp(finalFkst$mean)
+write.csv(cbind(exp(finalFkst$mean), finalFkst$mean), "univariate_predictions.csv")
 ```
 
