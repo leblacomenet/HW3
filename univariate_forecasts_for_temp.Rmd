@@ -2,7 +2,6 @@
 title: "Univariate Forecasts for min_temp_val and heat_days_val"
 output:
   pdf_document: default
-  html_notebook: default
 ---
 
 In this part we need to evaluate univariate forecasts of the temperatures for the multiple linear regression. 
