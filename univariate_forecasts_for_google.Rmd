@@ -1,0 +1,313 @@
+---
+title: "Univariate Forecasts for extreme_heat and extreme_cold"
+output: html_notebook
+---
+
+In this part we need to evaluate univariate forecasts of the temperatures for the multiple linear regression. 
+We will thus need to use the predicted values : 
+- of min_temp_val and heat_days_val from February 2017 to July 2017
+- of extreme_heat and extreme_cold from March 2017 to July 2017. 
+Here, we will only predict extreme_heat and extreme_cold. In another notebook, we predicted min_temp_val and heat_days_val. 
+
+### Load the data
+```{r}
+library(readr)
+google <- na.omit(read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+rmse <- function(l, r) {
+  sqrt(sum((l - r)^2)/NROW(l))
+}
+exp_rmse <- function(l, r) {
+  rmse(exp(l), exp(r))
+}
+```
+
+Variable creations : 
+```{r}
+# extreme_heat will be 1 when heatwave > mean(heatwave)
+extreme_heat <- as.numeric(google$heatwave > mean(google$heatwave))
+# extreme_cold will be 1 when snow_storm > mean(snow_storm) and extreme_weather > mean(extreme_weather)
+extreme_cold <- as.numeric(google$snow_storm > mean(google$snow_storm) & google$extreme_weather > mean(google$extreme_weather))
+```
+
+# extreme_heat
+
+### Stationarity and integration of the extreme_heat
+```{r}
+library(forecast)
+tsdisplay(extreme_heat,main="extreme_heat")
+tsdisplay(diff(extreme_heat, 3), main="Third Order Differientiation")
+tsdisplay(diff(extreme_heat, 12), main="Twelfth Order Differientiation")
+```
+As we can see, we need to do a 12th order differenciation in order to remove the seasonality. But we almost obtain a white noise !  
+
+### Models evaluation
+Let us convert data to a time series
+```{r}
+sextreme_heat = ts(extreme_heat, start = c(2004, 1), frequency=12)
+train = window(smin_temp_val, start = c(2004, 1), end = c(2016, 2))
+test = window(smin_temp_val, start = c(2016,3), end = c(2017, 2))
+```
+
+## Simple Snaive
+We first start with a simple seasonal naive process (ie. repetition of the last temporality). 
+```{r}
+snaive = snaive(train, h = 12)
+accuracy(snaive, test)
+```
+
+## Time Series Decomposition with min_temp_val
+Now for Time Series decomposition.
+```{r}
+decomp = stl(train, s.window="periodic")
+plot(decomp)
+```
+
+As previously, our first attempt will just forecast the time series by removing seasonality, and then using the last observation to which we add back the seasonality as the next forecast value.
+
+```{r}
+stlfk_naive = forecast(decomp, method="naive", h=12)
+summary(stlfk_naive)
+accuracy(stlfk_naive, test)
+```
+
+Let's try with exponential smoothing to forecast the seasonally-adjusted series.
+
+```{r}
+stlfk_ets = forecast(decomp, method="ets", h=12)
+summary(stlfk_ets)
+accuracy(stlfk_ets, test)
+```
+
+As a last attempt, we can also use arima on the seasonally-adjusted data.
+
+```{r}
+stlfk_arima = forecast(decomp, method="arima", h=12)
+summary(stlfk_arima)
+accuracy(stlfk_arima, test)
+```
+
+R picked an ARIMA(3,0,0). 
+
+The best model for now when we consider RMSE on the Test set is the STL + ETS(M,N,N). 
+
+## Seasonal ARIMA
+
+### Auto Arima on the log data
+We first look at the auto.arima output. 
+```{r}
+autofit = auto.arima(train, seasonal=TRUE)
+print(autofit)
+autofk = forecast(autofit,h=12)
+accuracy(autofk,test)
+```
+
+Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual differentiation, we try with an  ARIMA(3,0,0)(2,1,2).
+
+### Custom Seasonal Arima on the log data
+```{r}
+custfit = Arima(train, order=c(3,0,0), seasonal=c(2,1,2))
+print(custfit)
+custfk = forecast(custfit,h=12)
+accuracy(custfk,test)
+```
+
+Although the statistical tests and criterion seem better here, the error on train and test sets are higher, so we keep the STL + ETS(M,N,N).  
+
+### Rolling Window Evaluation
+To try more model, we would like to setup a rolling window. Let us find the optimal size of that window using the STL + ETS(M,N,N) we just fitted.
+
+```{r}
+library(ggplot2)
+err = data.frame("RMSE" = rep(0, 2014-2004+1), row.names = seq(2004, 2014))
+for (y in 2004:2014){
+    model = stl(window(train, start=c(y,1)), s.window="periodic")
+    rmse = accuracy(forecast(model, method="ets", h=12),test)[2,"RMSE"]
+    err[as.character(y),] = rmse
+}
+ggplot(err)+geom_line(aes(x=as.numeric(row.names(err)), y=RMSE))
+```
+
+So we should take the entire historical data ! 
+Let's just check with the months in 2014 : 
+
+```{r}
+errm = data.frame("RMSE" = rep(0, 12), row.names = seq(1, 12))
+for (m in 1:12){
+    model = stl(window(train, start=c(2004,m)), s.window="periodic")
+    rmse = accuracy(forecast(model, method="ets", h=12),test)[2,"RMSE"]
+    errm[as.character(m),] = rmse
+}
+ggplot(errm)+geom_line(aes(x=as.numeric(row.names(errm)), y=RMSE))+scale_x_continuous(breaks=seq(1,12))
+```
+
+We actually should start at 2004-03 (which makes sense since we predict starting mars). 
+We will thus use all the dataset except the 2 first months. So no need for a rolling window. 
+
+Creation of the needed forecast : from  March 2017 to March 2018 (we will only use from  March 2017 to July 2017). 
+```{r}
+train_final = window(sextreme_heat, start=c(2004,3), end=c(2017,3))
+model = stl(train_final, s.window="periodic")
+yearly_forecast = forecast(model, method="ets", h=12)
+plot(yearly_forecast)
+```
+
+# extreme_cold
+
+### Stationarity and integration of the extreme_cold
+```{r}
+library(forecast)
+tsdisplay(extreme_cold,main="extreme_cold")
+tsdisplay(diff(extreme_cold, 3), main="Third Order Differientiation")
+tsdisplay(diff(extreme_cold, 12), main="Twelfth Order Differientiation")
+```
+
+As previously, we need to do a 12th order differenciation in order to remove the seasonality. We notice that extreme_cold also ressembles a white noise.  
+
+### Models evaluation
+Let us convert data to a time series
+```{r}
+sextreme_cold = ts(extreme_cold, start = c(2004, 1), frequency=12)
+train = window(sextreme_cold, start = c(2004, 1), end = c(2016, 2))
+test = window(sextreme_cold, start = c(2016,3), end = c(2017, 2))
+```
+
+## Simple Snaive
+We first start with a simple seasonal naive process (ie. repetition of the last temporality). 
+```{r}
+snaive = snaive(train, h = 12)
+accuracy(snaive, test)
+```
+We have an exact forecast !! 
+
+## Time Series Decomposition with min_temp_val
+Now for Time Series decomposition.
+```{r}
+decomp = stl(train, s.window="periodic")
+plot(decomp)
+```
+
+As previously, our first attempt will just forecast the time series by removing seasonality, and then using the last observation to which we add back the seasonality as the next forecast value.
+
+```{r}
+stlfk_naive = forecast(decomp, method="naive", h=12)
+summary(stlfk_naive)
+accuracy(stlfk_naive, test)
+```
+
+Let's try with exponential smoothing to forecast the seasonally-adjusted series.
+
+```{r}
+stlfk_ets = forecast(decomp, method="ets", h=12)
+summary(stlfk_ets)
+accuracy(stlfk_ets, test)
+```
+
+As a last attempt, we can also use arima on the seasonally-adjusted data.
+
+```{r}
+stlfk_arima = forecast(decomp, method="arima", h=12)
+summary(stlfk_arima)
+accuracy(stlfk_arima, test)
+```
+
+R picked an ARIMA(1,1,1). 
+
+The best model for now the snaive forecast ! But this might not be the case for all test sets.  
+
+## Seasonal ARIMA
+
+### Auto Arima on the log data
+We first look at the auto.arima output. 
+```{r}
+autofit = auto.arima(train, seasonal=TRUE)
+print(autofit)
+autofk = forecast(autofit,h=12)
+accuracy(autofk,test)
+```
+
+Let us now try with our own seasonal ARIMA. Based on the ACF PACF of the annual differentiation, we try with an ARIMA(4,1,1)(1,0,0).
+
+### Custom Seasonal Arima on the log data
+```{r}
+custfit = Arima(train, order=c(4,1,1), seasonal=c(1,0,0))
+print(custfit)
+custfk = forecast(custfit,h=12)
+accuracy(custfk,test)
+```
+
+Here, we will compare snaive and the seasonal ARIMA(4,1,1)(1,0,0).  
+
+### Rolling Window Evaluation
+First, we would like to setup a rolling window. 
+There is no need to do so for snaive, as it only takes into account the last year. 
+Let us find the optimal size of that window using the seasonal ARIMA(4,1,1)(1,0,0). 
+
+```{r}
+library(ggplot2)
+err = data.frame("RMSE" = rep(0, 2014-2004+1), row.names = seq(2004, 2014))
+for (y in 2004:2014){
+    model = Arima(window(train, start=c(y,1)), order=c(4,1,1), seasonal=c(1,0,0))
+    rmse = accuracy(forecast(model,h=12),test)[2,"RMSE"]
+    err[as.character(y),] = rmse
+}
+ggplot(err)+geom_line(aes(x=as.numeric(row.names(err)), y=RMSE))
+```
+One year data is the best length ! But this is not enough for the seasonal ARIMA model selected. 
+Let us thus take a closer look at the year 2007.
+
+```{r}
+errm = data.frame("RMSE" = rep(0, 12), row.names = seq(1, 12))
+for (m in 1:12){
+    model = Arima(window(train, start=c(2007,m)), order=c(4,1,1), seasonal=c(1,0,0))
+    rmse = accuracy(forecast(model,h=12),test)[2,"RMSE"]
+    errm[as.character(m),] = rmse
+}
+ggplot(errm)+geom_line(aes(x=as.numeric(row.names(errm)), y=RMSE))+scale_x_continuous(breaks=seq(1,12))
+```
+
+We will still use a rolling window of 9 full years.
+
+```{r}
+rollwitme = function(lgas){
+    RMSE = rep(0,9)
+    for (y in 2004:2007){
+        tr = window(lgas, start=c(y,3), end=c(y+8,2))
+        te = window(lgas, start=c(y+8,3), end=c(y+9,2))
+        model = Arima(tr, order=c(4,1,1), seasonal=c(1,0,0))
+        RMSE[y+1-2004] = accuracy(forecast(model,h=12),te)[2,"RMSE"] 
+    }
+    return(RMSE)
+}
+```
+
+```{r}
+plot(2008:2016, rollwitme(sextreme_cold), type = 'l', main = "RMSE of a 9 year training set seasonal ARIMA(4,1,1)(1,0,0) forecast", ylab = "RMSE", xlab = "Forecasted year")
+```
+
+As for snaive :  
+
+```{r}
+rollwitme = function(lgas){
+    RMSE = rep(0,12)
+    for (y in 2004:2015){
+        tr = window(lgas, start=c(y,3), end=c(y+1,2))
+        te = window(lgas, start=c(y+1,3), end=c(y+2,2))
+        pred = snaive(tr, h = 12)
+        RMSE[y+1-2004] = accuracy(pred,te)[2,"RMSE"] 
+    }
+    return(RMSE)
+}
+```
+
+```{r}
+plot(2005:2016, rollwitme(sextreme_cold), type = 'l', main = "RMSE of a 1 year training set snaive forecast", ylab = "RMSE", xlab = "Forecasted year")
+```
+Clearly it's better to use the seasonal ARIMA !
+
+Creation of the needed forecast : from  March 2017 to March 2018 (we will only use from  March 2017 to July 2017). 
+```{r}
+train_final = window(sextreme_cold, start=c(2004,3), end=c(2017,3))
+model = Arima(train_final, order=c(4,1,1), seasonal=c(1,0,0))
+yearly_forecast = forecast(model,h=12)
+plot(yearly_forecast)
+```

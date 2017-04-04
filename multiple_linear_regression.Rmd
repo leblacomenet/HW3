@@ -24,34 +24,12 @@ We will thus need to use the predicted values :
 - of min_temp_val and heat_days_val from February 2017 to July 2017
 - of extreme_heat and extreme_cold from March 2017 to July 2017. 
 
-In both cases, we will compare the performances with the actual temperature data and the predicted temperatures. 
-
-### Plots
-
-## Temperature
+Loading these predictions obtained previously: 
 ```{r}
-library(ggplot2)
-temp_trunc = temp[temp$date >= 1973-01-15,]
-ggplot(temp_trunc)+geom_line(aes(x=date, y=av_temp_ano))+
-    labs(title = "Temperature in the US",  y = "Average Temperature Anomaly (°Farenheit)")
-ggplot(temp_trunc)+geom_line(aes(x=date, y=prec_ano))+
-    labs(title = "Precipitations in the US",  y = "Precipitation Anomaly")
-ggplot(temp_trunc)+geom_line(aes(x=date, y=cool_days_ano, colour = "Cooling"))+
-    geom_line(aes(x=date, y=heat_days_ano, colour ="Heating"))+
-    labs(title = "Cooling and Heating Degree Days in the US",  y = "Degree Days Anomaly")
+inter_preds <- read_excel("~/Documents/ECP/3A/Forecasting/HW3/data/inter_preds.xlsx")
+inter_preds
 ```
-
-
-## Google trends
-```{r}
-ggplot(google)+geom_line(aes(x=date, y=heatwave, colour="Heatwave"))+
-    geom_line(aes(x=date, y=extreme_weather, colour = "Extreme Weather"))+
-    labs(title = "Number of heatwaves and extreme weather occurences in the US",  y = "Count")
-```
-```{r}
-ggplot(google)+geom_line(aes(x=date, y=snow_storm, colour="Snow Storms"))+
-    labs(title = "Number of snow storms occurences in the US",  y = "Count")
-```
+Here extreme_heat and extreme_cold have NAs for april because we have the actual values in the "google" dataset. 
 
 ### Preparation
 
@@ -60,6 +38,14 @@ Let us merge the dataframes
 gas_temp = merge(gas, temp, by = "date", all.x = TRUE)
 gas_goo = merge(gas, google, by = "date", all = FALSE)
 all = merge(gas_temp, google, by= "date",  all = FALSE)
+
+extreme <- all[,c(16,17,18)]
+
+# extreme_heat will be 1 when heatwave > mean(heatwave)
+extreme_heat <- as.numeric(extreme$heatwave > mean(extreme$heatwave))
+# extreme_cold will be 1 when snow_storm > mean(snow_storm) and extreme_weather > mean(extreme_weather)
+extreme_cold <- as.numeric(extreme$snow_storm > mean(extreme$snow_storm) & extreme$extreme_weather > mean(extreme$extreme_weather))
+
 all = cbind(all, extreme_heat, extreme_cold)
 ```
 
@@ -70,7 +56,7 @@ all_train = all[all$date < '2015-06-15',]
 nrow(all_train)
 ```
 
-### Simple linear regression 
+### Multiple linear regression 
 
 We will test different combinasons. 
 
@@ -78,50 +64,107 @@ We will test different combinasons.
 train = all_train[,c("log_gas_cons", "min_temp_val", "heat_days_val", "extreme_heat", "extreme_cold")]
 test = all_test[,c("log_gas_cons", "min_temp_val", "heat_days_val", "extreme_heat", "extreme_cold")]
 
-linreg = lm(log_gas_cons ~., data = train)
-pred_linreg = predict.lm(linreg, newdata = test)
+linreg_all = lm(log_gas_cons ~., data = train)
+pred_linreg = predict.lm(linreg_all, newdata = test)
 accuracy(test$log_gas_cons, pred_linreg)
 
-summary(linreg)
-```
-```{r}
+summary(linreg_all)
+
 train = all_train[,c("log_gas_cons", "min_temp_val", "heat_days_val")]
 test = all_test[,c("log_gas_cons", "min_temp_val", "heat_days_val")]
 
-linreg = lm(log_gas_cons ~., data = train)
-pred_linreg = predict.lm(linreg, newdata = test)
+linreg_2 = lm(log_gas_cons ~., data = train)
+pred_linreg = predict.lm(linreg_2, newdata = test)
 accuracy(test$log_gas_cons, pred_linreg)
 
-summary(linreg)
-```
-```{r}
+summary(linreg_2)
+
 train = all_train[,c("log_gas_cons", "min_temp_val", "heat_days_val","extreme_heat")]
 test = all_test[,c("log_gas_cons", "min_temp_val", "heat_days_val", "extreme_heat")]
 
-linreg = lm(log_gas_cons ~., data = train)
-pred_linreg = predict.lm(linreg, newdata = test)
+linreg_3 = lm(log_gas_cons ~., data = train)
+pred_linreg = predict.lm(linreg_3, newdata = test)
 accuracy(test$log_gas_cons, pred_linreg)
 
-summary(linreg)
+summary(linreg_3)
 ```
 
 The best linear regression model is thus obtained with "log_gas_cons", "min_temp_val", "heat_days_val" and "extreme_heat". 
 
-### The distribution of errors over time
-TO DO : check the errors' distribution in time. (rolling window, toussa)
-
-###  VAR on the known dataset 
-Now lets fit and predict with a simple VAR model
+Let's convert in Time series
 ```{r}
-library(MTS)
-simple_var = VAR(all_train[,c(2,6,14,19,20)])
-simple_var_pred = VARpred(simple_var, h = 12)
-accuracy(all_test$gas_cons, simple_var_pred$pred[,1])
+train = all_train[,c("log_gas_cons", "min_temp_val", "heat_days_val","extreme_heat")]
+test = all_test[,c("log_gas_cons", "min_temp_val", "heat_days_val", "extreme_heat")]
 
-ref_simple_var = refVAR(simple_var)
-ref_simple_var_pred = VARpred(ref_simple_var, h = 12)
-accuracy(all_test$log_gas_cons, ref_simple_var_pred$pred[,1])
+strain = ts(train, start = c(2004, 1), frequency=12)
+train = window(strain, start = c(2004, 1), end = c(2015, 2))
+stest = ts(test, start = c(2015,3), frequency=12)
+test = window(stest, start = c(2015,3), end = c(2016, 2))
 ```
 
-Both the simple_var and the ref_simple_var are very bad predictors. 
+### Rolling Window Evaluation
+To try more model, we would like to setup a rolling window. Let us find the optimal size of that window using the multiple linear regression we just selected. 
 
+```{r}
+library(ggplot2)
+err = data.frame("RMSE" = rep(0, 2014-2004+1), row.names = seq(2004, 2014))
+for (y in 2004:2014){
+    model = lm(log_gas_cons ~., data = window(train, start=c(y,1)))
+    rmse = accuracy(predict.lm(model, newdata = test),test[,1])[2]
+    err[as.character(y),] = rmse
+}
+ggplot(err)+geom_line(aes(x=as.numeric(row.names(err)), y=RMSE))
+```
+So we'll take 2 years of data (since the result is 2012). 
+
+#### Final prediction : including both the predicted (when missing) and the actual temperatures
+
+Preparation of the databases (complicated here because we have a datapoint more in extreme_heat, ie google database):
+
+```{r}
+true_extreme_heat <- ts(as.numeric(google$heatwave > mean(google$heatwave)), start = c(2004, 1), frequency=12)
+pred_extreme_heat <- ts(inter_preds$extreme_heat[-1], start = c(2017, 4), frequency=12)
+
+true_min_temp_val = ts(temp$min_temp_val, start = c(1895, 1), frequency=12)
+true_heat_days_val = ts(temp$heat_days_val, start = c(1895, 1), frequency=12)
+
+pred_min_temp_val = ts(inter_preds$min_temp_val, start = c(2017, 3), frequency=12)
+pred_heat_days_val = ts(inter_preds$heat_days_val, start = c(2017, 3), frequency=12)
+
+tslog_gas_cons = ts(gas$log_gas_cons, start = c(1973,1), frequency = 12)
+
+data = as.data.frame(cbind(
+    window(tslog_gas_cons, start = c(2004,1), end = c(2016, 6)), 
+    window(true_min_temp_val, start = c(2004,1), end = c(2016, 6)), 
+    as.double(window(true_heat_days_val, start = c(2004,1), end = c(2016, 6))), 
+    as.double(window(true_extreme_heat, start = c(2004,1), end = c(2016, 6)))
+    )) 
+colnames(data) = c("log_gas_cons", "min_temp_val", "heat_days_val", "extreme_heat")
+
+nd_extreme_heat = ts(c(window(true_extreme_heat, start = c(2016, 7)),pred_extreme_heat), start = c(2016, 7), frequency=12)
+nd_min_temp_val = ts(c(window(true_min_temp_val, start = c(2016, 7)),pred_min_temp_val), start = c(2016, 7), frequency=12)
+nd_heat_days_val = ts(c(window(true_heat_days_val, start = c(2016, 7)),as.double(pred_heat_days_val)), start = c(2016, 7), frequency=12)
+
+newdata = as.data.frame(cbind(as.double(nd_min_temp_val), as.double(nd_heat_days_val), as.double(nd_extreme_heat)))
+colnames(newdata) = c("min_temp_val", "heat_days_val", "extreme_heat")
+```
+
+Fitting the model on all the dataset and plotting the predictions : 
+
+```{r}
+model = lm(log_gas_cons ~., data = data)
+prediction = predict.lm(model, newdata = newdata)
+prediction = ts(prediction, start = c(2016,7), frequency = 12)
+plot(prediction, main = "Prediction of Multiple linear regression on all the dataset", ylab = "log gas consumption")
+plot(exp(prediction), main = "Prediction of Multiple linear regression on all the dataset", ylab = "actual gas prediction")
+```
+Fitting the model on only the two last years and plotting the predictions : 
+
+```{r}
+data2 = data[127:150,]
+model2 = lm(log_gas_cons ~., data = data2)
+prediction2 = predict.lm(model2, newdata = newdata)
+prediction2 = ts(prediction2, start = c(2016,7), frequency = 12)
+plot(prediction2, main = "Prediction of Multiple linear regression on 2 years of the dataset", ylab = "log gas consumption")
+plot(exp(prediction2), main = "Prediction of Multiple linear regression on 2 years of the dataset", ylab = "actual gas prediction")
+```
