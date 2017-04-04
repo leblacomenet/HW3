@@ -1,6 +1,8 @@
 ---
 title: "Graphical Analysis"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 
 Let us perform a graphical analysis of the available data and have a look at its statistcal characteristics.

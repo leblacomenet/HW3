@@ -1,6 +1,8 @@
 ---
 title: "Univariate Forecasts for extreme_heat and extreme_cold"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 
 In this part we need to evaluate univariate forecasts of the temperatures for the multiple linear regression. 
@@ -13,6 +15,7 @@ Here, we will only predict extreme_heat and extreme_cold. In another notebook, w
 ```{r}
 library(readr)
 google <- na.omit(read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
+temp <- na.omit(read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
 rmse <- function(l, r) {
   sqrt(sum((l - r)^2)/NROW(l))
 }
@@ -44,6 +47,7 @@ As we can see, we need to do a 12th order differenciation in order to remove the
 Let us convert data to a time series
 ```{r}
 sextreme_heat = ts(extreme_heat, start = c(2004, 1), frequency=12)
+smin_temp_val = ts(temp$min_temp_val, start = c(1895, 1), frequency=12)
 train = window(smin_temp_val, start = c(2004, 1), end = c(2016, 2))
 test = window(smin_temp_val, start = c(2016,3), end = c(2017, 2))
 ```

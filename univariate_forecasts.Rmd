@@ -1,6 +1,8 @@
 ---
 title: "Univariate Forecasts"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 
 In this part we evaluate univariate forecasts of the gas consumption.
@@ -19,8 +21,8 @@ gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format 
 ```
 We also define functions for the RMS error which we will use as the main evaluation metric here.
 ```{r}
-rmse <- function(l, r) {sqrt(sum((l - r)^2)/NROW(l))}
-exp_rmse <- function(l, r) {rmse(exp(l), exp(r))}
+direct_rmse <- function(l, r) {sqrt(sum((l - r)^2)/NROW(l))}
+exp_rmse <- function(l, r) {direct_rmse(exp(l), exp(r))}
 ```
 
 

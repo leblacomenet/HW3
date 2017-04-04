@@ -1,6 +1,8 @@
 ---
 title: "Multiple Linear Regression"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 
 Here, we will use the MTS package to compute forecasts of the log gas consumption, basing ourselves on : 
@@ -13,6 +15,7 @@ As usual, we load the datasets.
 
 ```{r}
 library(readr)
+library(forecast)
 gas <- na.omit(read_csv("data/gas.csv", col_types = cols(date = col_date(format = "%Y-%m-%d"))))
 temp <- read_csv("data/temp.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
 google <- read_csv("data/google.csv", col_types = cols(date = col_date(format = "%Y-%m-%d")))
@@ -26,7 +29,8 @@ We will thus need to use the predicted values :
 
 Loading these predictions obtained previously: 
 ```{r}
-inter_preds <- read_excel("~/Documents/ECP/3A/Forecasting/HW3/data/inter_preds.xlsx")
+library(readxl)
+inter_preds <- read_excel("data/inter_preds.xlsx")
 inter_preds
 ```
 Here extreme_heat and extreme_cold have NAs for april because we have the actual values in the "google" dataset. 
