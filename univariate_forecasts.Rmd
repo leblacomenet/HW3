@@ -136,9 +136,20 @@ summary(dstl_arima)
 accuracy(dstl_naive, dtest)
 accuracy(dstl_arima, dtest)
 accuracy(dstl_ets, dtest)
+
+kable(data.frame("naive"=direct_rmse(dstl_naive$mean, dtest), 
+           "ets"=direct_rmse(dstl_ets$mean, dtest), 
+           "arima"=direct_rmse(dstl_arima$mean, dtest), row.names = "RMSE"), align='c')
 ```
 
 This time an ARIMA(1, 0, 0) is picked. The best performing model is the exponential smoothing one (ets). This additive approach performs better than the multiplicative approach we outlined in the previous section.
+
+```{r}
+final_stl = forecast(stl(window(dgas, start = c(1973, 1), end = c(2016, 6)), s.window="periodic"), method="ets", h=12)
+write.csv(final_stl$mean, "univariate_decomposition_predictions.csv")
+```
+
+We write our predictions to a file.
 
 ## Seasonal ARIMA
 
